@@ -96,7 +96,7 @@ const App: React.FC = () => {
               </svg>
             </div>
             <div>
-              <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">TripPlanner <span className="text-indigo-600">AI</span></h1>
+              <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">TripPlanner</h1>
               <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em]">Smart Travel Assistant</p>
             </div>
           </div>
@@ -256,7 +256,7 @@ const App: React.FC = () => {
       )}
 
       <footer className="py-8 text-center bg-white border-t border-slate-100 mt-auto">
-         <p className="text-slate-300 text-[10px] font-black uppercase tracking-[0.5em]">© 2026 TRIPPLANNER AI • PREMIUM TRAVEL MANAGER</p>
+         <p className="text-slate-300 text-[10px] font-black uppercase tracking-[0.5em]">© 2026 TRIPPLANNER • PREMIUM TRAVEL MANAGER</p>
       </footer>
 
       <PlaceModal isOpen={isModalOpen} place={editingPlace} onClose={() => setIsModalOpen(false)} onSave={handleSavePlace} />
