@@ -145,7 +145,7 @@ const App: React.FC = () => {
               <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full ${supabase ? 'bg-green-500 animate-pulse' : 'bg-red-400'}`}></span>
                 <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
-                  {supabase ? 'Supabase Database Connected' : 'Supabase Not Configured'}
+                  {supabase ? 'Database Connected' : 'Not Configured'}
                 </p>
               </div>
             </div>
