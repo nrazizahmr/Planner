@@ -47,6 +47,34 @@ const App: React.FC = () => {
     }
   };
 
+  const handleExport = () => {
+    if (places.length === 0) {
+      alert("Belum ada data untuk diunduh.");
+      return;
+    }
+
+    const headers = ["Nama", "Kategori", "Alamat", "Deskripsi", "Link Maps", "Rating", "Tags"];
+    const rows = places.map(p => [
+      `"${p.name.replace(/"/g, '""')}"`,
+      p.category,
+      `"${p.address.replace(/"/g, '""')}"`,
+      `"${p.description.replace(/"/g, '""')}"`,
+      p.referenceUrl,
+      p.rating || 0,
+      `"${p.tags.join(', ')}"`
+    ]);
+
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Trip_Planner_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const filteredPlaces = useMemo(() => {
     return places.filter(place => {
       const matchesSearch = place.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -76,7 +104,7 @@ const App: React.FC = () => {
           <div className="flex flex-grow max-w-2xl w-full relative">
             <input
               type="text"
-              placeholder="Cari tempat atau tag..."
+              placeholder="Cari tempat atau tag favorit..."
               className="w-full pl-14 pr-6 py-4 bg-slate-100 border-2 border-transparent rounded-[1.5rem] text-sm focus:bg-white focus:border-indigo-500 transition-all outline-none font-bold"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
@@ -86,15 +114,26 @@ const App: React.FC = () => {
             </svg>
           </div>
 
-          <button 
-            onClick={() => { setEditingPlace(undefined); setIsModalOpen(true); }}
-            className="bg-indigo-600 text-white px-8 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-2xl shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center gap-3 whitespace-nowrap"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            Tambah Tempat
-          </button>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={handleExport}
+              title="Download Data Excel (CSV)"
+              className="p-4 bg-white border-2 border-slate-100 text-slate-400 hover:text-indigo-600 hover:border-indigo-100 rounded-[1.5rem] transition-all flex items-center justify-center shadow-sm"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            </button>
+            <button 
+              onClick={() => { setEditingPlace(undefined); setIsModalOpen(true); }}
+              className="bg-indigo-600 text-white px-8 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-2xl shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center gap-3 whitespace-nowrap"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Tambah
+            </button>
+          </div>
         </div>
       </header>
 
@@ -215,6 +254,10 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      <footer className="py-8 text-center bg-white border-t border-slate-100 mt-auto">
+         <p className="text-slate-300 text-[10px] font-black uppercase tracking-[0.5em]">© 2026 TRIPPLANNER AI • PREMIUM TRAVEL MANAGER</p>
+      </footer>
 
       <PlaceModal isOpen={isModalOpen} place={editingPlace} onClose={() => setIsModalOpen(false)} onSave={handleSavePlace} />
     </div>
