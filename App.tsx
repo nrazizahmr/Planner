@@ -1,15 +1,19 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { Place, PlaceCategory } from './types.ts';
 import { PlaceCard } from './components/PlaceCard.tsx';
 import { PlaceModal } from './components/PlaceModal.tsx';
 
 /**
- * TIPS UNTUK PERMANEN: 
- * Tempelkan URL Google Apps Script Anda di variabel di bawah ini.
- * Setelah di-deploy, aplikasi akan otomatis terhubung ke Spreadsheet tersebut 
- * di perangkat mana pun tanpa perlu input link lagi.
+ * PENTING: MASUKKAN CREDENTIALS SUPABASE ANDA DI SINI
+ * Dengan mengisi ini, aplikasi akan otomatis terhubung di semua perangkat.
  */
-const PERMANENT_DB_URL = "https://script.google.com/macros/s/AKfycbx3LsBQ_bz4Q5Ei72l-v2KaWmoGofgGaSDF23OSK-7mhaTqdu2BAtD81xcQe2veEgiC/exec"; 
+const SUPABASE_URL = "https://bzwwoxwxssfcaduuoiww.supabase.co"; 
+const SUPABASE_ANON_KEY = "sb_publishable_XUzeccuHEeP9hU6flhmE5Q_RfG8qi8X"; 
+
+const supabase = (SUPABASE_URL && SUPABASE_ANON_KEY) 
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) 
+  : null;
 
 const App: React.FC = () => {
   const [places, setPlaces] = useState<Place[]>([]);
@@ -18,147 +22,102 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('Semua');
   const [viewingPlace, setViewingPlace] = useState<Place | null>(null);
-  
-  // Cloud Sync States
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
-  
-  // Logic Mendapatkan URL Database (Prioritas: Hardcoded > URL Param > LocalStorage)
-  const getInitialDbUrl = () => {
-    if (PERMANENT_DB_URL) return PERMANENT_DB_URL;
-    const params = new URLSearchParams(window.location.search);
-    const dbParam = params.get('db') || params.get('sync');
-    if (dbParam) {
-      localStorage.setItem('trip_sync_url', dbParam);
-      return dbParam;
-    }
-    return localStorage.getItem('trip_sync_url') || '';
-  };
+  const [isLoading, setIsLoading] = useState(false);
 
-  const [spreadsheetUrl, setSpreadsheetUrl] = useState<string>(getInitialDbUrl());
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState<number | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Load Initial Data (Cloud or Local)
+  // Load data dari Supabase saat startup
   useEffect(() => {
-    const initLoad = async () => {
-      if (spreadsheetUrl) {
-        await fetchFromCloud();
-      } else {
-        const saved = localStorage.getItem('trip_planner_pro_v1');
-        if (saved) {
-          try {
-            setPlaces(JSON.parse(saved));
-          } catch (e) {
-            console.error("Gagal memuat data lokal", e);
-          }
-        }
-      }
-    };
-    initLoad();
-  }, [spreadsheetUrl]);
+    fetchPlaces();
+  }, []);
 
-  // Keep Local Storage as Fallback
-  useEffect(() => {
-    localStorage.setItem('trip_planner_pro_v1', JSON.stringify(places));
-  }, [places]);
-
-  const fetchFromCloud = async () => {
-    if (!spreadsheetUrl) return;
-    setIsSyncing(true);
+  const fetchPlaces = async () => {
+    if (!supabase) return;
+    setIsLoading(true);
     try {
-      const response = await fetch(spreadsheetUrl);
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        setPlaces(data);
-        setLastSync(Date.now());
-      }
-    } catch (e) {
-      console.error("Cloud Fetch Error:", e);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+      const { data, error } = await supabase
+        .from('places')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-  const syncToCloud = async (newData: Place[]) => {
-    if (!spreadsheetUrl) return;
-    setIsSyncing(true);
-    try {
-      await fetch(spreadsheetUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newData)
-      });
-      setLastSync(Date.now());
-    } catch (e) {
-      console.error("Cloud Sync Error:", e);
+      if (error) throw error;
+      
+      // Mapping database (snake_case) ke frontend (camelCase) jika perlu
+      // Tapi kita usahakan field di SQL sama dengan interface Place
+      setPlaces(data as Place[]);
+    } catch (err) {
+      console.error("Gagal mengambil data Supabase:", err);
     } finally {
-      setIsSyncing(false);
+      setIsLoading(false);
     }
   };
 
   const handleSavePlace = async (placeData: Partial<Place>) => {
-    let updatedPlaces: Place[];
-    if (editingPlace) {
-      updatedPlaces = places.map(p => p.id === editingPlace.id ? { ...p, ...placeData } as Place : p);
-    } else {
-      const newPlace: Place = {
-        id: crypto.randomUUID(),
-        createdAt: Date.now(),
-        ...placeData,
-      } as Place;
-      updatedPlaces = [newPlace, ...places];
-    }
+    if (!supabase) return alert("Supabase belum dikonfigurasi di App.tsx!");
     
-    setPlaces(updatedPlaces);
-    if (spreadsheetUrl) await syncToCloud(updatedPlaces);
-    setEditingPlace(undefined);
+    setIsLoading(true);
+    try {
+      if (editingPlace) {
+        // UPDATE
+        const { error } = await supabase
+          .from('places')
+          .update({
+            name: placeData.name,
+            category: placeData.category,
+            address: placeData.address,
+            description: placeData.description,
+            reference_url: placeData.referenceUrl, // sesuaikan mapping
+            place_photo_url: placeData.placePhotoUrl,
+            menu_photo_url: placeData.menuPhotoUrl,
+            rating: placeData.rating,
+            tags: placeData.tags
+          })
+          .eq('id', editingPlace.id);
+        if (error) throw error;
+      } else {
+        // INSERT
+        const { error } = await supabase
+          .from('places')
+          .insert([{
+            name: placeData.name,
+            category: placeData.category,
+            address: placeData.address,
+            description: placeData.description,
+            reference_url: placeData.referenceUrl,
+            place_photo_url: placeData.placePhotoUrl,
+            menu_photo_url: placeData.menuPhotoUrl,
+            rating: placeData.rating,
+            tags: placeData.tags
+          }]);
+        if (error) throw error;
+      }
+      await fetchPlaces(); // Refresh data
+      setEditingPlace(undefined);
+    } catch (err) {
+      console.error("Gagal menyimpan ke Supabase:", err);
+      alert("Error saat menyimpan data.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleDeletePlace = async (id: string) => {
-    if (confirm("Hapus tempat ini dari database?")) {
-      const updatedPlaces = places.filter(p => p.id !== id);
-      setPlaces(updatedPlaces);
-      if (spreadsheetUrl) await syncToCloud(updatedPlaces);
-      if (viewingPlace?.id === id) setViewingPlace(null);
-    }
-  };
-
-  const handleExport = (format: 'csv' | 'json') => {
-    if (places.length === 0) return alert("Belum ada data.");
-    let content = '', fileName = `Trip_Backup_${Date.now()}`, mimeType = '';
-    if (format === 'csv') {
-      const headers = ["Nama", "Kategori", "Alamat", "Deskripsi", "Link Maps", "Rating", "Tags"];
-      const rows = places.map(p => [`"${p.name.replace(/"/g, '""')}"`, p.category, `"${p.address.replace(/"/g, '""')}"`, `"${p.description.replace(/"/g, '""')}"`, p.referenceUrl, p.rating || 0, `"${p.tags.join(', ')}"`]);
-      content = [headers, ...rows].map(e => e.join(",")).join("\n");
-      fileName += '.csv'; mimeType = 'text/csv';
-    } else {
-      content = JSON.stringify(places, null, 2);
-      fileName += '.json'; mimeType = 'application/json';
-    }
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url; link.download = fileName; link.click();
-  };
-
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (event) => {
+    if (!supabase) return;
+    if (confirm("Hapus tempat ini secara permanen dari Supabase?")) {
+      setIsLoading(true);
       try {
-        const imported = JSON.parse(event.target?.result as string);
-        if (Array.isArray(imported)) {
-          const merged = [...imported, ...places].filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
-          setPlaces(merged);
-          if (spreadsheetUrl) await syncToCloud(merged);
-          alert("Data berhasil diimpor!");
-        }
-      } catch (err) { alert("File tidak valid."); }
-    };
-    reader.readAsText(file);
+        const { error } = await supabase
+          .from('places')
+          .delete()
+          .eq('id', id);
+        if (error) throw error;
+        setPlaces(places.filter(p => p.id !== id));
+        if (viewingPlace?.id === id) setViewingPlace(null);
+      } catch (err) {
+        console.error("Gagal menghapus dari Supabase:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
   };
 
   const filteredPlaces = useMemo(() => {
@@ -171,19 +130,6 @@ const App: React.FC = () => {
     });
   }, [places, searchQuery, filterCategory]);
 
-  const appsScriptCode = `// KODE UNTUK GOOGLE APPS SCRIPT
-function doGet() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  var data = sheet.getRange(1, 1).getValue();
-  return ContentService.createTextOutput(data || "[]").setMimeType(ContentService.MimeType.JSON);
-}
-
-function doPost(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  sheet.getRange(1, 1).setValue(e.postData.contents);
-  return ContentService.createTextOutput(JSON.stringify({status: "success"})).setMimeType(ContentService.MimeType.JSON);
-}`;
-
   return (
     <div className="min-h-screen flex flex-col bg-[#fbfcfd]">
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-40 px-8 py-6">
@@ -194,16 +140,19 @@ function doPost(e) {
             </div>
             <div>
               <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">TripPlanner <span className="text-indigo-600">AI</span></h1>
-              <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em]">
-                {spreadsheetUrl ? 'Database Connected' : 'Local Mode'}
-              </p>
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${supabase ? 'bg-green-500 animate-pulse' : 'bg-red-400'}`}></span>
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
+                  {supabase ? 'Supabase Database Connected' : 'Supabase Not Configured'}
+                </p>
+              </div>
             </div>
           </div>
 
           <div className="flex flex-grow max-w-2xl w-full relative">
             <input 
               type="text" 
-              placeholder="Cari rencana perjalanan..." 
+              placeholder="Cari tempat tujuan..." 
               className="w-full pl-14 pr-6 py-4 bg-slate-100 border-2 border-transparent rounded-[1.5rem] text-sm focus:bg-white focus:border-indigo-500 transition-all outline-none font-bold" 
               value={searchQuery} 
               onChange={e => setSearchQuery(e.target.value)} 
@@ -212,32 +161,17 @@ function doPost(e) {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Sync Indicator */}
             <button 
               onClick={() => setIsSyncModalOpen(true)}
-              className={`flex items-center gap-3 px-5 py-4 rounded-[1.5rem] border-2 transition-all shadow-sm ${spreadsheetUrl ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-slate-100 text-slate-300'}`}
-              title="Database Settings"
+              className={`flex items-center gap-3 px-5 py-4 rounded-[1.5rem] border-2 transition-all shadow-sm ${supabase ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-red-50 border-red-100 text-red-400'}`}
             >
-              <svg className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
               <span className="text-[10px] font-black uppercase tracking-widest hidden md:inline">
-                {isSyncing ? 'Syncing...' : (lastSync ? 'Synced' : 'Connect')}
+                {isLoading ? 'Loading...' : 'Database'}
               </span>
             </button>
-
-            <div className="relative group">
-              <button className="p-4 bg-white border-2 border-slate-100 text-slate-400 hover:text-indigo-600 rounded-[1.5rem] transition-all shadow-sm">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-              </button>
-              <div className="absolute top-full right-0 mt-2 w-52 bg-white border border-slate-100 rounded-2xl shadow-xl py-2 hidden group-hover:block z-50 animate-modal-in">
-                <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-3 hover:bg-slate-50 text-[10px] font-black uppercase text-slate-600">Unduh Excel (.csv)</button>
-                <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-3 hover:bg-slate-50 text-[10px] font-black uppercase text-slate-600">Unduh Backup (.json)</button>
-                <hr className="my-2 border-slate-50" />
-                <button onClick={() => fileInputRef.current?.click()} className="w-full text-left px-4 py-3 hover:bg-slate-50 text-[10px] font-black uppercase text-indigo-600">Impor Backup</button>
-              </div>
-            </div>
-            <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleImport} />
 
             <button 
               onClick={() => { setEditingPlace(undefined); setIsModalOpen(true); }} 
@@ -263,11 +197,13 @@ function doPost(e) {
           ))}
         </div>
 
-        {filteredPlaces.length === 0 ? (
+        {places.length === 0 && !isLoading ? (
           <div className="flex flex-col items-center justify-center py-40 text-center bg-white rounded-[4rem] border border-slate-100 shadow-sm px-10">
-            <h2 className="text-4xl font-black text-slate-900 mb-3 tracking-tighter">Tidak Ada Data</h2>
+            <h2 className="text-4xl font-black text-slate-900 mb-3 tracking-tighter">
+              {supabase ? 'Belum Ada Rencana' : 'Database Kosong'}
+            </h2>
             <p className="text-slate-400 max-w-md mb-6 font-bold">
-              {spreadsheetUrl ? 'Data tersimpan aman di Google Spreadsheet Anda.' : 'Database belum terhubung. Gunakan menu Connect untuk sinkronisasi.'}
+              {supabase ? 'Aplikasi sudah terhubung ke Supabase. Mulai tambahkan tempat tujuan Anda!' : 'Masukkan Credential Supabase di App.tsx untuk mulai menyimpan data ke database cloud.'}
             </p>
           </div>
         ) : (
@@ -279,75 +215,50 @@ function doPost(e) {
         )}
       </main>
 
-      {/* Cloud Settings Modal */}
+      {/* Supabase Config Modal */}
       {isSyncModalOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md overflow-y-auto">
           <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-2xl animate-modal-in overflow-hidden p-10">
             <div className="flex justify-between items-center mb-10">
-              <h2 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Database Connection</h2>
+              <h2 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Supabase Configuration</h2>
               <button onClick={() => setIsSyncModalOpen(false)} className="text-slate-400 hover:text-slate-600"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
             
             <div className="space-y-8">
-              {!PERMANENT_DB_URL ? (
-                <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-4">Google Apps Script Web App URL</label>
-                  <input 
-                    type="url" 
-                    placeholder="https://script.google.com/macros/s/.../exec" 
-                    className="w-full px-6 py-4 bg-white border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500 font-bold text-sm mb-4"
-                    value={spreadsheetUrl}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSpreadsheetUrl(val);
-                      localStorage.setItem('trip_sync_url', val);
-                    }}
-                  />
-                  <div className="flex gap-3">
-                    <button onClick={fetchFromCloud} className="flex-grow py-4 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all">Hubungkan & Tarik Data</button>
-                    <button 
-                      onClick={() => {
-                        const shareLink = `${window.location.origin}${window.location.pathname}?db=${encodeURIComponent(spreadsheetUrl)}`;
-                        navigator.clipboard.writeText(shareLink);
-                        alert("Link Sync disalin! Bagikan ke perangkat lain.");
-                      }}
-                      className="px-6 py-4 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-widest"
-                    >
-                      Salin Link Sync
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-8 bg-green-50 border border-green-100 rounded-[2rem] text-center">
-                  <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
-                  </div>
-                  <h3 className="text-lg font-black text-green-900 uppercase tracking-tighter mb-2">Database Locked Permanently</h3>
-                  <p className="text-xs font-medium text-green-700 mb-6">Aplikasi ini sudah terhubung secara global ke Spreadsheet Anda.</p>
-                  <code className="block p-3 bg-white/50 rounded-xl text-[8px] text-green-800 break-all">{PERMANENT_DB_URL}</code>
-                </div>
-              )}
+              <div className={`p-8 rounded-[2rem] text-center ${supabase ? 'bg-indigo-600 text-white shadow-2xl shadow-indigo-200' : 'bg-red-50 text-red-800 border border-red-100'}`}>
+                 <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 ${supabase ? 'bg-white/20' : 'bg-red-100'}`}>
+                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d={supabase ? "M5 13l4 4L19 7" : "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"} /></svg>
+                 </div>
+                 <h3 className="text-xl font-black uppercase tracking-tighter mb-2">{supabase ? 'Supabase Connected' : 'Action Required'}</h3>
+                 <p className="text-xs font-bold opacity-80 leading-relaxed">
+                   {supabase 
+                     ? 'Aplikasi ini sudah terhubung secara global ke Supabase Anda. Semua data disimpan di Cloud secara real-time.' 
+                     : 'Isi SUPABASE_URL dan SUPABASE_ANON_KEY di dalam kode App.tsx untuk mengaktifkan database.'}
+                 </p>
+              </div>
 
               <div className="space-y-4">
-                <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Script Setup (Google Spreadsheet):</p>
-                <div className="bg-slate-900 rounded-[2rem] p-6 overflow-hidden">
-                  <div className="flex justify-between items-center mb-4">
-                    <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Apps Script Code</span>
-                    <button 
-                      onClick={() => { navigator.clipboard.writeText(appsScriptCode); alert("Kode disalin!"); }}
-                      className="text-indigo-400 hover:text-white transition-colors text-[10px] font-black uppercase"
-                    >
-                      Salin Kode
-                    </button>
-                  </div>
-                  <pre className="text-indigo-300 font-mono text-[9px] h-32 overflow-y-auto no-scrollbar whitespace-pre-wrap leading-relaxed">
-                    {appsScriptCode}
-                  </pre>
-                </div>
-                <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
-                   <p className="text-xs font-medium text-indigo-700 leading-relaxed italic">
-                     Buka Spreadsheet &gt; Extensions &gt; Apps Script &gt; Paste Kode &gt; Deploy &gt; New Deployment (Web App) &gt; Who has access: Anyone.
+                <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Langkah Setup Supabase:</p>
+                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
+                   <p className="text-xs font-medium text-slate-700 leading-relaxed">
+                     1. Buat project di <a href="https://supabase.com" target="_blank" className="text-indigo-600 underline">supabase.com</a>.<br/>
+                     2. Jalankan perintah SQL di SQL Editor untuk membuat tabel <b>places</b>.<br/>
+                     3. Masukkan Project URL dan Anon Key ke variabel di <b>App.tsx</b>.
                    </p>
+                   <div className="bg-slate-900 rounded-xl p-4">
+                      <p className="text-[9px] text-indigo-300 font-mono">
+                        CREATE TABLE places ( ... );
+                      </p>
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText(`create table places (\n  id uuid primary key default gen_random_uuid(),\n  name text not null,\n  category text,\n  address text,\n  description text,\n  reference_url text,\n  place_photo_url text,\n  menu_photo_url text,\n  rating numeric,\n  tags text[],\n  created_at timestamptz default now()\n);`);
+                          alert("SQL query disalin!");
+                        }}
+                        className="mt-2 text-[9px] font-black uppercase text-white/50 hover:text-white"
+                      >
+                        Salin SQL Lengkap
+                      </button>
+                   </div>
                 </div>
               </div>
             </div>
@@ -355,17 +266,18 @@ function doPost(e) {
         </div>
       )}
 
+      {/* Viewing Details */}
       {viewingPlace && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-xl overflow-y-auto" onClick={() => setViewingPlace(null)}>
           <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-4xl my-auto animate-modal-in overflow-hidden flex flex-col lg:flex-row max-h-[90vh]" onClick={e => e.stopPropagation()}>
             <div className="w-full lg:w-1/2 bg-slate-100 overflow-y-auto no-scrollbar">
               {viewingPlace.placePhotoUrl && <div className="p-4"><img src={viewingPlace.placePhotoUrl} className="w-full rounded-[2rem] shadow-lg mb-6" alt="Foto" /></div>}
-              {viewingPlace.menuPhotoUrl && <div className="p-4 pt-0"><p className="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">Foto Menu</p><img src={viewingPlace.menuPhotoUrl} className="w-full rounded-[2rem] shadow-lg" alt="Menu" /></div>}
+              {viewingPlace.menuPhotoUrl && <div className="p-4 pt-0"><p className="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest px-4">Foto Menu</p><img src={viewingPlace.menuPhotoUrl} className="w-full rounded-[2rem] shadow-lg" alt="Menu" /></div>}
             </div>
             <div className="w-full lg:w-1/2 p-10 lg:p-14 overflow-y-auto flex flex-col">
               <div className="flex justify-between items-start mb-6">
                 <span className="px-4 py-1.5 rounded-xl bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase border border-indigo-100">{viewingPlace.category}</span>
-                <button onClick={() => setViewingPlace(null)} className="text-slate-300 hover:text-slate-600"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg></button>
+                <button onClick={() => setViewingPlace(null)} className="text-slate-300 hover:text-slate-600 transition-colors"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg></button>
               </div>
               <h2 className="text-4xl font-black text-slate-900 leading-tight mb-4 tracking-tighter">{viewingPlace.name}</h2>
               <div className="flex items-center gap-4 mb-8">
@@ -374,10 +286,10 @@ function doPost(e) {
               </div>
               <div className="space-y-4 mb-10 flex-grow">
                 <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Deskripsi</p>
-                <p className="text-slate-600 leading-relaxed font-medium text-lg whitespace-pre-wrap">{viewingPlace.description || "..."}</p>
+                <p className="text-slate-600 leading-relaxed font-medium text-lg whitespace-pre-wrap">{viewingPlace.description || "Tidak ada deskripsi."}</p>
               </div>
               <div className="flex gap-4">
-                <a href={viewingPlace.referenceUrl} target="_blank" className="flex-grow py-5 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl text-center shadow-2xl hover:bg-indigo-700 transition-all">Buka Maps</a>
+                <a href={viewingPlace.referenceUrl} target="_blank" className="flex-grow py-5 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl text-center shadow-2xl hover:bg-indigo-700 transition-all">Buka Google Maps</a>
                 <button onClick={() => { setEditingPlace(viewingPlace); setIsModalOpen(true); setViewingPlace(null); }} className="p-5 bg-white border-2 border-slate-100 text-slate-400 hover:text-indigo-600 rounded-2xl transition-all"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
               </div>
             </div>
@@ -386,7 +298,7 @@ function doPost(e) {
       )}
 
       <footer className="py-8 text-center bg-white border-t border-slate-100 mt-auto">
-         <p className="text-slate-300 text-[10px] font-black uppercase tracking-[0.5em]">© 2026 TRIPPLANNER AI • PERMANENT DATABASE LINK</p>
+         <p className="text-slate-300 text-[10px] font-black uppercase tracking-[0.5em]">© 2026 TRIPPLANNER AI • POWERED BY SUPABASE CLOUD</p>
       </footer>
       <PlaceModal isOpen={isModalOpen} place={editingPlace} onClose={() => setIsModalOpen(false)} onSave={handleSavePlace} />
     </div>

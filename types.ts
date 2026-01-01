@@ -15,12 +15,16 @@ export interface Place {
   category: PlaceCategory;
   address: string;
   description: string;
-  referenceUrl: string;
-  placePhotoUrl?: string;
-  menuPhotoUrl?: string;
+  referenceUrl: string;      // maps to reference_url in SQL
+  reference_url?: string;    // support direct mapping from Supabase
+  placePhotoUrl?: string;    // maps to place_photo_url in SQL
+  place_photo_url?: string;  // support direct mapping
+  menuPhotoUrl?: string;     // maps to menu_photo_url in SQL
+  menu_photo_url?: string;   // support direct mapping
   rating?: number;
   tags: string[];
-  createdAt: number;
+  created_at?: string;
+  createdAt?: number;
 }
 
 export interface GeminiPlaceInfo {

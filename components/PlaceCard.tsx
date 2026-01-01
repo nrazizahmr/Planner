@@ -21,14 +21,19 @@ const getCategoryColor = (category: PlaceCategory) => {
 };
 
 export const PlaceCard: React.FC<PlaceCardProps> = ({ place, onEdit, onDelete, onClick }) => {
+  // Mapping fallback for Supabase snake_case
+  const photoUrl = place.place_photo_url || place.placePhotoUrl;
+  const menuUrl = place.menu_photo_url || place.menuPhotoUrl;
+  const refUrl = place.reference_url || place.referenceUrl;
+
   return (
     <div 
       onClick={onClick}
       className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden hover:shadow-2xl hover:-translate-y-2 transition-all cursor-pointer flex flex-col h-full group"
     >
       <div className="relative h-48 bg-slate-50 overflow-hidden">
-        {place.placePhotoUrl ? (
-          <img src={place.placePhotoUrl} className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-700" />
+        {photoUrl ? (
+          <img src={photoUrl} className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-700" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-slate-200">
             <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -54,16 +59,16 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({ place, onEdit, onDelete, o
         </p>
         <p className="text-slate-600 text-xs mb-5 line-clamp-2 leading-relaxed italic">"{place.description}"</p>
         <div className="flex flex-wrap gap-1.5">
-          {place.tags.slice(0, 3).map((tag, i) => (
+          {place.tags && place.tags.slice(0, 3).map((tag, i) => (
             <span key={i} className="bg-indigo-50 text-indigo-600 text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-lg">#{tag}</span>
           ))}
-          {place.tags.length > 3 && <span className="text-[9px] text-slate-400 font-bold self-center">+{place.tags.length - 3}</span>}
+          {place.tags && place.tags.length > 3 && <span className="text-[9px] text-slate-400 font-bold self-center">+{place.tags.length - 3}</span>}
         </div>
       </div>
       
       <div className="px-6 py-5 bg-slate-50/50 border-t border-slate-100 flex gap-2" onClick={e => e.stopPropagation()}>
-        <a href={place.referenceUrl} target="_blank" className="flex-grow py-3 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-[0.2em] rounded-xl text-center shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all">Maps</a>
-        {place.menuPhotoUrl && (
+        <a href={refUrl} target="_blank" className="flex-grow py-3 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-[0.2em] rounded-xl text-center shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all">Maps</a>
+        {menuUrl && (
           <button onClick={onClick} className="px-4 bg-white text-indigo-600 border border-indigo-200 rounded-xl font-black text-[9px] uppercase tracking-widest">Menu</button>
         )}
         <button onClick={() => onEdit(place)} className="p-2 text-slate-300 hover:text-indigo-600 transition-colors"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
