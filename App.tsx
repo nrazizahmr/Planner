@@ -10,12 +10,14 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('Semua');
   const [viewingPlace, setViewingPlace] = useState<Place | null>(null);
+  
+  // Cloud Sync States
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string>(localStorage.getItem('trip_sync_url') || '');
   const [isSyncing, setIsSyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load Initial Data
+  // Load Initial Data (Cloud or Local)
   useEffect(() => {
     const initLoad = async () => {
       if (spreadsheetUrl) {
@@ -23,14 +25,18 @@ const App: React.FC = () => {
       } else {
         const saved = localStorage.getItem('trip_planner_pro_v1');
         if (saved) {
-          try { setPlaces(JSON.parse(saved)); } catch (e) { console.error(e); }
+          try {
+            setPlaces(JSON.parse(saved));
+          } catch (e) {
+            console.error("Gagal memuat data lokal", e);
+          }
         }
       }
     };
     initLoad();
   }, [spreadsheetUrl]);
 
-  // Local Storage Backup
+  // Keep Local Storage as Fallback
   useEffect(() => {
     localStorage.setItem('trip_planner_pro_v1', JSON.stringify(places));
   }, [places]);
@@ -45,7 +51,7 @@ const App: React.FC = () => {
         setPlaces(data);
       }
     } catch (e) {
-      console.error("Gagal mengambil data dari Cloud", e);
+      console.error("Cloud Fetch Error:", e);
     } finally {
       setIsSyncing(false);
     }
@@ -55,15 +61,16 @@ const App: React.FC = () => {
     if (!spreadsheetUrl) return;
     setIsSyncing(true);
     try {
+      // Menggunakan POST untuk menyimpan data ke GAS
       await fetch(spreadsheetUrl, {
         method: 'POST',
-        mode: 'no-cors',
+        mode: 'no-cors', // Penting untuk Apps Script tanpa preflight complex
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newData)
       });
-      // Karena no-cors, kita asumsikan berhasil jika tidak ada error lemparan
+      // Karena no-cors, kita tidak bisa baca response, tapi data terkirim
     } catch (e) {
-      console.error("Gagal sinkronisasi ke Cloud", e);
+      console.error("Cloud Sync Error:", e);
     } finally {
       setIsSyncing(false);
     }
@@ -81,13 +88,14 @@ const App: React.FC = () => {
       } as Place;
       updatedPlaces = [newPlace, ...places];
     }
+    
     setPlaces(updatedPlaces);
     if (spreadsheetUrl) await syncToCloud(updatedPlaces);
     setEditingPlace(undefined);
   };
 
   const handleDeletePlace = async (id: string) => {
-    if (confirm("Hapus tempat ini?")) {
+    if (confirm("Hapus tempat ini dari database?")) {
       const updatedPlaces = places.filter(p => p.id !== id);
       setPlaces(updatedPlaces);
       if (spreadsheetUrl) await syncToCloud(updatedPlaces);
@@ -96,17 +104,28 @@ const App: React.FC = () => {
   };
 
   const handleExport = (format: 'csv' | 'json') => {
-    if (places.length === 0) return alert("Data kosong.");
+    if (places.length === 0) return alert("Belum ada data.");
+    
     let content = '', fileName = `Trip_Backup_${Date.now()}`, mimeType = '';
+    
     if (format === 'csv') {
       const headers = ["Nama", "Kategori", "Alamat", "Deskripsi", "Link Maps", "Rating", "Tags"];
-      const rows = places.map(p => [`"${p.name}"`, p.category, `"${p.address}"`, `"${p.description}"`, p.referenceUrl, p.rating || 0, `"${p.tags.join(', ')}"`]);
+      const rows = places.map(p => [
+        `"${p.name.replace(/"/g, '""')}"`,
+        p.category,
+        `"${p.address.replace(/"/g, '""')}"`,
+        `"${p.description.replace(/"/g, '""')}"`,
+        p.referenceUrl,
+        p.rating || 0,
+        `"${p.tags.join(', ')}"`
+      ]);
       content = [headers, ...rows].map(e => e.join(",")).join("\n");
       fileName += '.csv'; mimeType = 'text/csv';
     } else {
       content = JSON.stringify(places, null, 2);
       fileName += '.json'; mimeType = 'application/json';
     }
+
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -125,9 +144,9 @@ const App: React.FC = () => {
           const merged = [...imported, ...places].filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
           setPlaces(merged);
           if (spreadsheetUrl) await syncToCloud(merged);
-          alert("Berhasil diimpor!");
+          alert("Data berhasil digabungkan dan disinkronkan!");
         }
-      } catch (err) { alert("Format salah."); }
+      } catch (err) { alert("File tidak valid."); }
     };
     reader.readAsText(file);
   };
@@ -142,16 +161,20 @@ const App: React.FC = () => {
     });
   }, [places, searchQuery, filterCategory]);
 
-  const appsScriptCode = `function doGet() {
+  const appsScriptCode = `// KODE UNTUK GOOGLE APPS SCRIPT
+function doGet() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  var data = sheet.getRange(2, 1).getValue();
-  return ContentService.createTextOutput(data || "[]").setMimeType(ContentService.MimeType.JSON);
+  var data = sheet.getRange(1, 1).getValue(); // Mengambil data dari cell A1
+  return ContentService.createTextOutput(data || "[]")
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  sheet.getRange(2, 1).setValue(e.postData.contents);
-  return ContentService.createTextOutput("Success");
+  var content = e.postData.contents;
+  sheet.getRange(1, 1).setValue(content); // Menyimpan JSON ke cell A1
+  return ContentService.createTextOutput(JSON.stringify({status: "success"}))
+    .setMimeType(ContentService.MimeType.JSON);
 }`;
 
   return (
@@ -164,36 +187,51 @@ function doPost(e) {
             </div>
             <div>
               <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">TripPlanner <span className="text-indigo-600">AI</span></h1>
-              <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em]">Smart Travel Assistant</p>
+              <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em]">Cloud Database Enabled</p>
             </div>
           </div>
 
           <div className="flex flex-grow max-w-2xl w-full relative">
-            <input type="text" placeholder="Cari tempat..." className="w-full pl-14 pr-6 py-4 bg-slate-100 border-2 border-transparent rounded-[1.5rem] text-sm focus:bg-white focus:border-indigo-500 transition-all outline-none font-bold" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+            <input 
+              type="text" 
+              placeholder="Cari rencana perjalanan..." 
+              className="w-full pl-14 pr-6 py-4 bg-slate-100 border-2 border-transparent rounded-[1.5rem] text-sm focus:bg-white focus:border-indigo-500 transition-all outline-none font-bold" 
+              value={searchQuery} 
+              onChange={e => setSearchQuery(e.target.value)} 
+            />
             <svg className="w-6 h-6 absolute left-5 top-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Cloud Sync Button */}
             <button 
               onClick={() => setIsSyncModalOpen(true)}
-              className={`p-4 rounded-[1.5rem] border-2 transition-all flex items-center justify-center shadow-sm ${spreadsheetUrl ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-slate-100 text-slate-400'}`}
-              title="Cloud Sync Settings"
+              className={`p-4 rounded-[1.5rem] border-2 transition-all flex items-center justify-center shadow-sm ${spreadsheetUrl ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-slate-100 text-slate-300'}`}
+              title="Cloud Database Settings"
             >
               <svg className={`w-6 h-6 ${isSyncing ? 'animate-pulse' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
               </svg>
             </button>
+
+            {/* Export/Import Dropdown */}
             <div className="relative group">
-              <button className="p-4 bg-white border-2 border-slate-100 text-slate-400 hover:text-indigo-600 rounded-[1.5rem] transition-all shadow-sm"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></button>
-              <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl py-2 hidden group-hover:block z-50 animate-modal-in">
-                <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-3 hover:bg-slate-50 text-[10px] font-black uppercase text-slate-600">Ekspor Excel (CSV)</button>
-                <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-3 hover:bg-slate-50 text-[10px] font-black uppercase text-slate-600">Ekspor Backup (JSON)</button>
-                <hr className="my-2 border-slate-100" />
+              <button className="p-4 bg-white border-2 border-slate-100 text-slate-400 hover:text-indigo-600 rounded-[1.5rem] transition-all shadow-sm">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+              </button>
+              <div className="absolute top-full right-0 mt-2 w-52 bg-white border border-slate-100 rounded-2xl shadow-xl py-2 hidden group-hover:block z-50 animate-modal-in">
+                <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-3 hover:bg-slate-50 text-[10px] font-black uppercase text-slate-600">Unduh Excel (.csv)</button>
+                <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-3 hover:bg-slate-50 text-[10px] font-black uppercase text-slate-600">Unduh Backup (.json)</button>
+                <hr className="my-2 border-slate-50" />
                 <button onClick={() => fileInputRef.current?.click()} className="w-full text-left px-4 py-3 hover:bg-slate-50 text-[10px] font-black uppercase text-indigo-600">Impor Backup</button>
               </div>
             </div>
             <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleImport} />
-            <button onClick={() => { setEditingPlace(undefined); setIsModalOpen(true); }} className="bg-indigo-600 text-white px-8 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-2xl shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center gap-3">
+
+            <button 
+              onClick={() => { setEditingPlace(undefined); setIsModalOpen(true); }} 
+              className="bg-indigo-600 text-white px-8 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-2xl shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center gap-3"
+            >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
               Tambah
             </button>
@@ -204,7 +242,11 @@ function doPost(e) {
       <main className="flex-grow max-w-7xl mx-auto w-full p-8">
         <div className="flex overflow-x-auto pb-8 gap-3 no-scrollbar">
           {['Semua', ...Object.values(PlaceCategory)].map(cat => (
-            <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all border-2 flex-shrink-0 ${filterCategory === cat ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-100' : 'bg-white border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-600'}`}>
+            <button 
+              key={cat} 
+              onClick={() => setFilterCategory(cat)} 
+              className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all border-2 flex-shrink-0 ${filterCategory === cat ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-100' : 'bg-white border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-600'}`}
+            >
               {cat}
             </button>
           ))}
@@ -212,8 +254,10 @@ function doPost(e) {
 
         {filteredPlaces.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-40 text-center bg-white rounded-[4rem] border border-slate-100 shadow-sm px-10">
-            <h2 className="text-4xl font-black text-slate-900 mb-3 tracking-tighter">Belum Ada Rencana</h2>
-            <p className="text-slate-400 max-w-md mb-6 font-bold">Data saat ini tersimpan di {spreadsheetUrl ? 'Google Sheets' : 'Browser ini'}.</p>
+            <h2 className="text-4xl font-black text-slate-900 mb-3 tracking-tighter">Tidak Ada Data</h2>
+            <p className="text-slate-400 max-w-md mb-6 font-bold">
+              {spreadsheetUrl ? 'Sinkronisasi Cloud Aktif. Tambahkan tempat baru untuk menyimpannya ke Spreadsheet.' : 'Mulai tambahkan tempat atau hubungkan ke Google Sheets untuk akses multi-perangkat.'}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
@@ -224,64 +268,74 @@ function doPost(e) {
         )}
       </main>
 
-      {/* Cloud Sync Modal */}
+      {/* Cloud Sync Setup Modal */}
       {isSyncModalOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md overflow-y-auto">
           <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-2xl animate-modal-in overflow-hidden p-10">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Cloud Database Sync</h2>
+            <div className="flex justify-between items-center mb-10">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
+                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" /></svg>
+                </div>
+                <h2 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Cloud Settings</h2>
+              </div>
               <button onClick={() => setIsSyncModalOpen(false)} className="text-slate-400 hover:text-slate-600"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
             
-            <div className="space-y-6">
-              <div className="p-6 bg-indigo-50 rounded-3xl border border-indigo-100">
-                <p className="text-xs font-bold text-indigo-600 leading-relaxed">
-                  Gunakan Google Spreadsheet sebagai database agar data muncul di semua perangkat/akun Google Anda.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Apps Script Web App URL</label>
-                <input 
-                  type="url" 
-                  placeholder="https://script.google.com/macros/s/.../exec" 
-                  className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500 font-bold text-sm"
-                  value={spreadsheetUrl}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setSpreadsheetUrl(val);
-                    localStorage.setItem('trip_sync_url', val);
-                  }}
-                />
+            <div className="space-y-8">
+              <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block mb-4">Google Apps Script Web App URL</label>
+                <div className="flex gap-3">
+                  <input 
+                    type="url" 
+                    placeholder="https://script.google.com/macros/s/.../exec" 
+                    className="flex-grow px-6 py-4 bg-white border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500 font-bold text-sm"
+                    value={spreadsheetUrl}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSpreadsheetUrl(val);
+                      localStorage.setItem('trip_sync_url', val);
+                    }}
+                  />
+                  <button onClick={fetchFromCloud} className="px-6 bg-white border-2 border-slate-100 text-indigo-600 rounded-2xl font-black text-[10px] uppercase hover:border-indigo-100 transition-all">Tarik Data</button>
+                </div>
+                {spreadsheetUrl && (
+                  <p className="mt-4 text-[10px] font-bold text-green-500 flex items-center gap-2">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    Database terhubung ke Cloud
+                  </p>
+                )}
               </div>
 
               <div className="space-y-4">
-                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Cara Setup (Google Spreadsheet):</p>
-                <ol className="text-xs text-slate-600 space-y-2 list-decimal ml-4 font-medium">
-                  <li>Buka Spreadsheet > Extensions > Apps Script.</li>
-                  <li>Hapus kode lama, tempel kode di bawah ini.</li>
-                  <li>Deploy > New Deployment > Web App.</li>
-                  <li>Set "Who has access" ke "Anyone".</li>
-                  <li>Salin URL hasil deploy ke kotak di atas.</li>
-                </ol>
-                <textarea 
-                  readOnly 
-                  className="w-full h-40 p-4 bg-slate-900 text-indigo-300 rounded-2xl font-mono text-[10px] outline-none"
-                  value={appsScriptCode}
-                />
-                <button 
-                  onClick={() => { navigator.clipboard.writeText(appsScriptCode); alert("Kode disalin!"); }}
-                  className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all"
-                >
-                  Salin Kode Script
-                </button>
+                <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Cara Hubungkan ke Spreadsheet:</p>
+                <div className="bg-slate-900 rounded-[2rem] p-6 overflow-hidden">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-[10px] font-black uppercase text-slate-500">Copy Script Berikut</span>
+                    <button 
+                      onClick={() => { navigator.clipboard.writeText(appsScriptCode); alert("Kode disalin!"); }}
+                      className="text-indigo-400 hover:text-white transition-colors text-[10px] font-black uppercase"
+                    >
+                      Salin Kode
+                    </button>
+                  </div>
+                  <pre className="text-indigo-300 font-mono text-[9px] h-40 overflow-y-auto no-scrollbar whitespace-pre-wrap leading-relaxed">
+                    {appsScriptCode}
+                  </pre>
+                </div>
+                <div className="flex gap-4 p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
+                   <div className="text-indigo-600 mt-1"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg></div>
+                   <p className="text-xs font-medium text-indigo-700 leading-relaxed italic">
+                     Buka Spreadsheet > Extensions > Apps Script > Paste Kode > Deploy > New Deployment (Web App) > Who has access: Anyone.
+                   </p>
+                </div>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Detail View Modal (Existing) */}
+      {/* Detail View Modal (Keep existing functionality) */}
       {viewingPlace && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-xl overflow-y-auto" onClick={() => setViewingPlace(null)}>
           <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-4xl my-auto animate-modal-in overflow-hidden flex flex-col lg:flex-row max-h-[90vh]" onClick={e => e.stopPropagation()}>
@@ -313,7 +367,7 @@ function doPost(e) {
       )}
 
       <footer className="py-8 text-center bg-white border-t border-slate-100 mt-auto">
-         <p className="text-slate-300 text-[10px] font-black uppercase tracking-[0.5em]">© 2026 TRIPPLANNER AI • PREMIUM TRAVEL MANAGER</p>
+         <p className="text-slate-300 text-[10px] font-black uppercase tracking-[0.5em]">© 2026 TRIPPLANNER AI • DATABASE GOOGLE SHEETS READY</p>
       </footer>
       <PlaceModal isOpen={isModalOpen} place={editingPlace} onClose={() => setIsModalOpen(false)} onSave={handleSavePlace} />
     </div>
