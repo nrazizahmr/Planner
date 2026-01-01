@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <!-- Babel Standalone untuk menjalankan TSX di browser -->
+  <!-- Babel Standalone untuk menjalankan TSX di browser tanpa build step -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
     body {
@@ -17,6 +17,7 @@
       background-color: #fbfcfd;
       margin: 0;
       padding: 0;
+      overflow-x: hidden;
     }
     .no-scrollbar::-webkit-scrollbar {
       display: none;
@@ -42,10 +43,8 @@
 </head>
 <body>
   <div id="root"></div>
-  <!-- Menjalankan index.tsx sebagai modul Babel -->
-  <script type="text/babel" data-type="module">
-    import "./index.tsx";
-  </script>
+  <!-- Kita gunakan type="text/babel" agar Babel Standalone memproses file index.tsx -->
+  <script type="text/babel" data-type="module" src="./index.tsx"></script>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>
