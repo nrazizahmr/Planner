@@ -61,14 +61,12 @@ const App: React.FC = () => {
     if (!spreadsheetUrl) return;
     setIsSyncing(true);
     try {
-      // Menggunakan POST untuk menyimpan data ke GAS
       await fetch(spreadsheetUrl, {
         method: 'POST',
-        mode: 'no-cors', // Penting untuk Apps Script tanpa preflight complex
+        mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newData)
       });
-      // Karena no-cors, kita tidak bisa baca response, tapi data terkirim
     } catch (e) {
       console.error("Cloud Sync Error:", e);
     } finally {
@@ -203,7 +201,6 @@ function doPost(e) {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Cloud Sync Button */}
             <button 
               onClick={() => setIsSyncModalOpen(true)}
               className={`p-4 rounded-[1.5rem] border-2 transition-all flex items-center justify-center shadow-sm ${spreadsheetUrl ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-slate-100 text-slate-300'}`}
@@ -214,7 +211,6 @@ function doPost(e) {
               </svg>
             </button>
 
-            {/* Export/Import Dropdown */}
             <div className="relative group">
               <button className="p-4 bg-white border-2 border-slate-100 text-slate-400 hover:text-indigo-600 rounded-[1.5rem] transition-all shadow-sm">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
@@ -268,7 +264,6 @@ function doPost(e) {
         )}
       </main>
 
-      {/* Cloud Sync Setup Modal */}
       {isSyncModalOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md overflow-y-auto">
           <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-2xl animate-modal-in overflow-hidden p-10">
@@ -326,7 +321,7 @@ function doPost(e) {
                 <div className="flex gap-4 p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
                    <div className="text-indigo-600 mt-1"><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg></div>
                    <p className="text-xs font-medium text-indigo-700 leading-relaxed italic">
-                     Buka Spreadsheet > Extensions > Apps Script > Paste Kode > Deploy > New Deployment (Web App) > Who has access: Anyone.
+                     Buka Spreadsheet &gt; Extensions &gt; Apps Script &gt; Paste Kode &gt; Deploy &gt; New Deployment (Web App) &gt; Who has access: Anyone.
                    </p>
                 </div>
               </div>
@@ -335,7 +330,6 @@ function doPost(e) {
         </div>
       )}
 
-      {/* Detail View Modal (Keep existing functionality) */}
       {viewingPlace && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-xl overflow-y-auto" onClick={() => setViewingPlace(null)}>
           <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-4xl my-auto animate-modal-in overflow-hidden flex flex-col lg:flex-row max-h-[90vh]" onClick={e => e.stopPropagation()}>
