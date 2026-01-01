@@ -9,7 +9,7 @@ import { PlaceModal } from './components/PlaceModal.tsx';
  * Setelah di-deploy, aplikasi akan otomatis terhubung ke Spreadsheet tersebut 
  * di perangkat mana pun tanpa perlu input link lagi.
  */
-const PERMANENT_DB_URL = "https://script.google.com/macros/s/AKfycbxjwdxaRlfV0mo3fCcb7qi_zyV4ctdnIPY7WWU4Skb3HvsSPttkWfaLOH4MlFovZ-cO/exec"; 
+const PERMANENT_DB_URL = "https://script.google.com/macros/s/AKfycbx3LsBQ_bz4Q5Ei72l-v2KaWmoGofgGaSDF23OSK-7mhaTqdu2BAtD81xcQe2veEgiC/exec"; 
 
 const App: React.FC = () => {
   const [places, setPlaces] = useState<Place[]>([]);
