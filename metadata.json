@@ -1,5 +1,8 @@
+
 {
-  "name": "Smart Travel Planner AI",
-  "description": "A sophisticated travel planning application that uses Gemini AI to automatically extract place information from Google Maps links and other reference URLs, featuring a spreadsheet-like CRUD interface for trip organization.",
-  "requestFramePermissions": []
+  "name": "TripPlanner AI Premium",
+  "description": "Premium Travel Planner dengan dukungan ekstraksi otomatis Google Maps menggunakan Gemini AI.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
 }
