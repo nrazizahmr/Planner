@@ -11,6 +11,9 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('Semua');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  
+  // State untuk pratinjau gambar
+  const [previewImage, setPreviewImage] = useState<{ url: string, title: string } | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem('trip_planner_v5_streamlit');
@@ -184,7 +187,13 @@ const App: React.FC = () => {
         ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
             {filteredPlaces.map(place => (
-              <PlaceCard key={place.id} place={place} onEdit={handleEditPlace} onDelete={handleDeletePlace} />
+              <PlaceCard 
+                key={place.id} 
+                place={place} 
+                onEdit={handleEditPlace} 
+                onDelete={handleDeletePlace} 
+                onViewImage={(url, title) => setPreviewImage({ url, title })}
+              />
             ))}
           </div>
         ) : (
@@ -203,7 +212,10 @@ const App: React.FC = () => {
                   <tr key={place.id} className="hover:bg-slate-50/50 transition-colors group">
                     <td className="px-10 py-8">
                       <div className="flex items-center gap-6">
-                        <div className="w-16 h-16 rounded-[1.2rem] bg-slate-100 flex-shrink-0 overflow-hidden border border-slate-200">
+                        <div 
+                          className="w-16 h-16 rounded-[1.2rem] bg-slate-100 flex-shrink-0 overflow-hidden border border-slate-200 cursor-pointer"
+                          onClick={() => place.placePhotoUrl && setPreviewImage({ url: place.placePhotoUrl, title: place.name })}
+                        >
                           {place.placePhotoUrl ? <img src={place.placePhotoUrl} className="w-full h-full object-cover" /> : null}
                         </div>
                         <div>
@@ -235,6 +247,32 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+
+      {/* Lightbox Pratinjau Gambar */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center p-6 md:p-12 animate-in fade-in duration-300"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div className="absolute top-8 right-8 flex gap-4">
+             <button className="text-white bg-white/10 hover:bg-white/20 p-4 rounded-full transition-all backdrop-blur-md">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+             </button>
+          </div>
+          <div className="max-w-5xl w-full h-full flex flex-col items-center justify-center gap-6" onClick={e => e.stopPropagation()}>
+             <h2 className="text-white text-2xl font-black uppercase tracking-widest text-center">{previewImage.title}</h2>
+             <div className="relative w-full flex-grow flex items-center justify-center overflow-hidden rounded-[3rem] bg-black/20 border border-white/10 shadow-2xl">
+                <img src={previewImage.url} className="max-w-full max-h-full object-contain" alt={previewImage.title} />
+             </div>
+             <button 
+                onClick={() => setPreviewImage(null)}
+                className="bg-white text-slate-900 px-10 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all active:scale-95"
+             >
+                Tutup Pratinjau
+             </button>
+          </div>
+        </div>
+      )}
 
       <footer className="py-12 border-t border-slate-200 text-center">
         <p className="text-slate-300 text-[10px] font-black uppercase tracking-[0.4em]">&copy; {new Date().getFullYear()} TRIPPLANNER AI • PREMIUM TRAVEL MANAGER</p>
