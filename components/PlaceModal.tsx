@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Place, PlaceCategory, ReferenceLink } from '../types';
+import { Place, PlaceCategory } from '../types';
 import { extractPlaceInfo } from '../services/geminiService';
 
 interface PlaceModalProps {
@@ -16,7 +16,7 @@ export const PlaceModal: React.FC<PlaceModalProps> = ({ place, isOpen, onClose, 
     category: PlaceCategory.OTHER,
     address: '',
     description: '',
-    references: [{ title: 'Google Maps', url: '' }],
+    referenceUrl: '',
     placePhotoUrl: '',
     menuPhotoUrl: '',
     tags: [],
@@ -37,7 +37,7 @@ export const PlaceModal: React.FC<PlaceModalProps> = ({ place, isOpen, onClose, 
         category: PlaceCategory.OTHER,
         address: '',
         description: '',
-        references: [{ title: 'Google Maps', url: '' }],
+        referenceUrl: '',
         placePhotoUrl: '',
         menuPhotoUrl: '',
         tags: [],
@@ -50,7 +50,7 @@ export const PlaceModal: React.FC<PlaceModalProps> = ({ place, isOpen, onClose, 
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
-        setError("File size too large. Please select an image under 2MB.");
+        setError("File terlalu besar. Gunakan gambar di bawah 2MB.");
         return;
       }
       const reader = new FileReader();
@@ -62,51 +62,30 @@ export const PlaceModal: React.FC<PlaceModalProps> = ({ place, isOpen, onClose, 
   };
 
   const handleAiExtract = async () => {
-    const mainUrl = formData.references?.[0]?.url;
-    if (!mainUrl) {
-      setError("Please enter the first reference URL (e.g. Google Maps) for AI to analyze.");
+    if (!formData.referenceUrl) {
+      setError("Paste link Google Maps terlebih dahulu.");
       return;
     }
 
     setIsLoading(true);
     setError(null);
     try {
-      const info = await extractPlaceInfo(mainUrl);
+      const info = await extractPlaceInfo(formData.referenceUrl);
       setFormData(prev => ({
         ...prev,
         ...info
       }));
     } catch (err: any) {
-      setError("Could not extract data automatically. Please fill manually.");
+      setError("AI gagal mengambil data. Coba cek link atau isi manual.");
       console.error(err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleAddReference = () => {
-    setFormData(prev => ({
-      ...prev,
-      references: [...(prev.references || []), { title: '', url: '' }]
-    }));
-  };
-
-  const handleRemoveReference = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      references: prev.references?.filter((_, i) => i !== index)
-    }));
-  };
-
-  const handleReferenceChange = (index: number, field: keyof ReferenceLink, value: string) => {
-    const newRefs = [...(formData.references || [])];
-    newRefs[index] = { ...newRefs[index], [field]: value };
-    setFormData(prev => ({ ...prev, references: newRefs }));
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name) return;
+    if (!formData.name || !formData.referenceUrl) return;
     onSave(formData);
     onClose();
   };
@@ -115,156 +94,112 @@ export const PlaceModal: React.FC<PlaceModalProps> = ({ place, isOpen, onClose, 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl my-8 overflow-hidden animate-in fade-in zoom-in duration-200">
-        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 sticky top-0 bg-white z-10">
-          <h2 className="text-xl font-bold text-slate-800">{place ? 'Edit Place' : 'Add New Place'}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-2xl my-8 overflow-hidden animate-in fade-in zoom-in duration-300">
+        <div className="px-10 py-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 sticky top-0 bg-white z-10">
+          <h2 className="text-3xl font-black text-slate-800 tracking-tighter">{place ? 'Edit Tempat' : 'Tambah Tempat'}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+            <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Photos Upload Section */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="block text-sm font-semibold text-slate-700">Foto Tempat</label>
+        <form onSubmit={handleSubmit} className="p-10 space-y-8">
+          <div className="space-y-3">
+            <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Link Google Maps</label>
+            <div className="flex gap-3">
+              <input
+                type="url"
+                required
+                placeholder="https://maps.google.com/..."
+                className="flex-grow px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-50/50 outline-none transition-all text-sm font-medium"
+                value={formData.referenceUrl || ''}
+                onChange={e => setFormData({ ...formData, referenceUrl: e.target.value })}
+              />
+              <button
+                type="button"
+                onClick={handleAiExtract}
+                disabled={isLoading}
+                className="px-6 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 disabled:bg-indigo-300 transition-all flex items-center gap-2 font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 active:scale-95"
+              >
+                {isLoading ? <span className="animate-spin">⏳</span> : '✨'}
+                {isLoading ? 'Ekstrak...' : 'Auto-Fill'}
+              </button>
+            </div>
+            {error && <p className="text-red-500 text-[10px] font-bold uppercase tracking-widest">{error}</p>}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-3">
+              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Foto Tempat</label>
               <div 
                 onClick={() => placePhotoInputRef.current?.click()}
-                className="relative group h-32 w-full border-2 border-dashed border-slate-200 rounded-xl overflow-hidden flex flex-col items-center justify-center cursor-pointer hover:border-indigo-300 hover:bg-slate-50 transition-all"
+                className="relative group h-44 w-full border-2 border-dashed border-slate-200 rounded-[2rem] overflow-hidden flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30 transition-all bg-slate-50/50"
               >
                 {formData.placePhotoUrl ? (
                   <>
                     <img src={formData.placePhotoUrl} className="w-full h-full object-cover" alt="Preview" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">
-                      UBAH FOTO
+                    <div className="absolute inset-0 bg-indigo-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-black tracking-widest uppercase transition-opacity">
+                      Ubah Foto
                     </div>
                   </>
                 ) : (
                   <div className="text-center p-4">
-                    <svg className="w-8 h-8 text-slate-300 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span className="text-xs text-slate-400">Klik untuk upload foto</span>
+                    <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm border border-slate-100">
+                      <svg className="w-7 h-7 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14" />
+                      </svg>
+                    </div>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Upload Foto</span>
                   </div>
                 )}
               </div>
-              <input 
-                type="file" 
-                ref={placePhotoInputRef} 
-                className="hidden" 
-                accept="image/*" 
-                onChange={(e) => handleFileChange(e, 'placePhotoUrl')} 
-              />
+              <input type="file" ref={placePhotoInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'placePhotoUrl')} />
             </div>
 
-            <div className="space-y-2">
-              <label className="block text-sm font-semibold text-slate-700">Foto Menu</label>
+            <div className="space-y-3">
+              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Foto Menu</label>
               <div 
                 onClick={() => menuPhotoInputRef.current?.click()}
-                className="relative group h-32 w-full border-2 border-dashed border-slate-200 rounded-xl overflow-hidden flex flex-col items-center justify-center cursor-pointer hover:border-indigo-300 hover:bg-slate-50 transition-all"
+                className="relative group h-44 w-full border-2 border-dashed border-slate-200 rounded-[2rem] overflow-hidden flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30 transition-all bg-slate-50/50"
               >
                 {formData.menuPhotoUrl ? (
                   <>
                     <img src={formData.menuPhotoUrl} className="w-full h-full object-cover" alt="Menu Preview" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">
-                      UBAH MENU
+                    <div className="absolute inset-0 bg-indigo-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-black tracking-widest uppercase transition-opacity">
+                      Ubah Menu
                     </div>
                   </>
                 ) : (
                   <div className="text-center p-4">
-                    <svg className="w-8 h-8 text-slate-300 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <span className="text-xs text-slate-400">Klik untuk upload menu</span>
+                    <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm border border-slate-100">
+                      <svg className="w-7 h-7 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414" />
+                      </svg>
+                    </div>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Upload Menu</span>
                   </div>
                 )}
               </div>
-              <input 
-                type="file" 
-                ref={menuPhotoInputRef} 
-                className="hidden" 
-                accept="image/*" 
-                onChange={(e) => handleFileChange(e, 'menuPhotoUrl')} 
-              />
+              <input type="file" ref={menuPhotoInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'menuPhotoUrl')} />
             </div>
           </div>
 
-          {/* References Section */}
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <label className="block text-sm font-semibold text-slate-700">Link Referensi</label>
-              <button 
-                type="button" 
-                onClick={handleAddReference}
-                className="text-xs font-bold text-indigo-600 hover:text-indigo-800"
-              >
-                + Tambah Link
-              </button>
-            </div>
-            {formData.references?.map((ref, idx) => (
-              <div key={idx} className="flex gap-2 items-start">
-                <input
-                  type="text"
-                  placeholder="Judul (Contoh: Gmaps)"
-                  className="w-1/3 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                  value={ref.title}
-                  onChange={e => handleReferenceChange(idx, 'title', e.target.value)}
-                />
-                <div className="flex-grow flex gap-2">
-                  <input
-                    type="url"
-                    placeholder="https://..."
-                    className="flex-grow px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                    value={ref.url}
-                    onChange={e => handleReferenceChange(idx, 'url', e.target.value)}
-                  />
-                  {idx === 0 && (
-                     <button
-                        type="button"
-                        onClick={handleAiExtract}
-                        disabled={isLoading}
-                        className="px-3 py-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 disabled:opacity-50 transition-colors"
-                        title="Ekstrak info dari URL ini menggunakan AI"
-                      >
-                        {isLoading ? <span className="animate-spin inline-block">⏳</span> : '✨'}
-                      </button>
-                  )}
-                  {idx > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveReference(idx)}
-                      className="px-3 py-2 text-red-400 hover:text-red-600"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-            {error && <p className="text-red-500 text-[10px] mt-1">{error}</p>}
-          </div>
-
-          <hr className="border-slate-100" />
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Nama Tempat</label>
+          <div className="grid grid-cols-2 gap-6">
+            <div className="col-span-2 md:col-span-1 space-y-2">
+              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Nama Tempat</label>
               <input
                 type="text"
                 required
-                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none font-medium"
                 value={formData.name || ''}
                 onChange={e => setFormData({ ...formData, name: e.target.value })}
               />
             </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Kategori</label>
+            <div className="col-span-2 md:col-span-1 space-y-2">
+              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Kategori</label>
               <select
-                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none cursor-pointer font-medium"
                 value={formData.category}
                 onChange={e => setFormData({ ...formData, category: e.target.value as PlaceCategory })}
               >
@@ -275,63 +210,62 @@ export const PlaceModal: React.FC<PlaceModalProps> = ({ place, isOpen, onClose, 
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Alamat</label>
-            <input
-              type="text"
-              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+          <div className="space-y-2">
+            <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Alamat</label>
+            <textarea
+              className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none h-20 resize-none font-medium"
               value={formData.address || ''}
               onChange={e => setFormData({ ...formData, address: e.target.value })}
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Deskripsi</label>
+          <div className="space-y-2">
+            <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Deskripsi</label>
             <textarea
-              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none h-20 resize-none"
+              className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none h-24 resize-none font-medium"
               value={formData.description || ''}
               onChange={e => setFormData({ ...formData, description: e.target.value })}
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Tags (Pisahkan koma)</label>
+          <div className="grid grid-cols-2 gap-6">
+            <div className="col-span-2 md:col-span-1 space-y-2">
+              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Tags</label>
               <input
                 type="text"
-                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                placeholder="pemandangan, murah, hits"
+                placeholder="Hits, Kopi, Murah"
+                className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none font-medium"
                 value={formData.tags?.join(', ') || ''}
                 onChange={e => setFormData({ ...formData, tags: e.target.value.split(',').map(s => s.trim()) })}
               />
             </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Rating</label>
+            <div className="col-span-2 md:col-span-1 space-y-2">
+              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Rating (0-5)</label>
               <input
                 type="number"
                 min="0"
                 max="5"
                 step="0.1"
-                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none font-medium"
                 value={formData.rating || 0}
                 onChange={e => setFormData({ ...formData, rating: parseFloat(e.target.value) })}
               />
             </div>
           </div>
 
-          <div className="pt-4 flex justify-end gap-3 sticky bottom-0 bg-white py-2 border-t border-slate-50">
+          <div className="pt-10 flex justify-end gap-4 sticky bottom-0 bg-white py-6 border-t border-slate-50">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2 text-slate-600 font-semibold hover:bg-slate-50 rounded-lg transition-colors"
+              className="px-10 py-4 text-slate-400 font-black uppercase tracking-widest hover:bg-slate-50 rounded-2xl transition-all"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all"
+              className="px-12 py-4 bg-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl hover:bg-indigo-700 shadow-2xl shadow-indigo-100 transition-all active:scale-95"
             >
-              {place ? 'Simpan Perubahan' : 'Tambah Tempat'}
+              {place ? 'Simpan' : 'Tambah'}
             </button>
           </div>
         </form>

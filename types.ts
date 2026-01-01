@@ -9,18 +9,13 @@ export enum PlaceCategory {
   OTHER = 'Other'
 }
 
-export interface ReferenceLink {
-  title: string;
-  url: string;
-}
-
 export interface Place {
   id: string;
   name: string;
   category: PlaceCategory;
   address: string;
   description: string;
-  references: ReferenceLink[];
+  referenceUrl: string;
   placePhotoUrl?: string;
   menuPhotoUrl?: string;
   rating?: number;

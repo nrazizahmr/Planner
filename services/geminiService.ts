@@ -2,40 +2,37 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { GeminiPlaceInfo, PlaceCategory } from "../types";
 
-const apiKey = process.env.API_KEY || "";
-const ai = new GoogleGenAI({ apiKey });
-
 export const extractPlaceInfo = async (url: string): Promise<GeminiPlaceInfo> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const model = "gemini-3-flash-preview";
   
-  const prompt = `Extract detailed travel place information from this URL: ${url}. 
-  If the URL is a Google Maps link, use your knowledge of that location. 
-  If it's a general travel link, summarize the key destination.
+  const prompt = `Lakukan pencarian Google (Search Grounding) untuk mendapatkan informasi paling akurat dari link Google Maps ini: ${url}.
   
-  Important: Categorize the place into one of these: Restaurant, Cafe, Sightseeing, Hotel, Shopping, Activity, or Other.`;
+  Ekstrak data dengan detail berikut:
+  1. Nama tempat yang resmi dan benar.
+  2. Alamat fisik lengkap.
+  3. Deskripsi singkat (1-2 kalimat) yang menjelaskan daya tarik utama tempat ini.
+  4. Rating bintang terbaru (dalam angka 1-5).
+  5. Minimal 3 tags relevan (misal: "Instagrammable", "Kopi Enak", "Pemandangan Alam").
+  6. Kategori yang paling pas: Restaurant, Cafe, Sightseeing, Hotel, Shopping, Activity, atau Other.
+
+  Pastikan output dalam format JSON murni.`;
 
   const response = await ai.models.generateContent({
     model,
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     config: {
+      tools: [{ googleSearch: {} }],
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          name: { type: Type.STRING, description: "Name of the place" },
-          category: { 
-            type: Type.STRING, 
-            enum: Object.values(PlaceCategory),
-            description: "Category of the place" 
-          },
-          address: { type: Type.STRING, description: "Physical address or location description" },
-          description: { type: Type.STRING, description: "A concise 1-2 sentence description" },
-          tags: { 
-            type: Type.ARRAY, 
-            items: { type: Type.STRING },
-            description: "List of 3-5 keywords or tags" 
-          },
-          rating: { type: Type.NUMBER, description: "The rating out of 5, if available" }
+          name: { type: Type.STRING },
+          category: { type: Type.STRING, enum: Object.values(PlaceCategory) },
+          address: { type: Type.STRING },
+          description: { type: Type.STRING },
+          tags: { type: Type.ARRAY, items: { type: Type.STRING } },
+          rating: { type: Type.NUMBER }
         },
         required: ["name", "category", "address", "description", "tags"]
       }
@@ -43,7 +40,7 @@ export const extractPlaceInfo = async (url: string): Promise<GeminiPlaceInfo> =>
   });
 
   const text = response.text;
-  if (!text) throw new Error("No information found for this URL.");
+  if (!text) throw new Error("Gagal mengekstrak informasi. Pastikan link Google Maps valid.");
   
   return JSON.parse(text) as GeminiPlaceInfo;
 };
